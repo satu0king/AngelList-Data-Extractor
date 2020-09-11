@@ -1,26 +1,26 @@
 var axios = require('axios');
 const fs = require('fs');
 
-
-function getConfig(page = 1) {
+function getRequestConfig(page = 1) {
   var data = JSON.stringify({
     'operationName': 'JobSearchResultsX',
     'variables': {
       'filterConfigurationInput': {
         'page': page,
-        'locationTagIds': ['1904'],
+        'locationTagIds': ['1904'],  // Hardcoded to Bangalore
         'remoteCompanyLocationTagIds': ['153509'],
-        // 'roleTagIds': ['14726'],
+        'roleTagIds': ['14726'],  // Hardcoded for software engineer
         'companySizes': [
           'SIZE_11_50', 'SIZE_51_200', 'SIZE_201_500', 'SIZE_501_1000',
           'SIZE_1001_5000', 'SIZE_5000_PLUS'
         ],
-        'equity': {'min': null, 'max': null},
+        'equity': {'min': null, 'max': null},  // No constraint on equity
         'includeJobsWithoutExperience': true,
         'remotePreference': 'REMOTE_OPEN',
-        'salary': {'min': 100, 'max': null},
+        'salary': {'min': 100, 'max': null},  // Hardcoded for minimum 1,00,000
         'currencyCode': 'INR',
-        'yearsExperience': {'min': null, 'max': 3}
+        'yearsExperience':
+            {'min': null, 'max': 3}  // Hardcoded years of experience 0-3
       }
     },
     'query':
@@ -41,18 +41,28 @@ function getConfig(page = 1) {
 
 var aggregateData = [];
 
+/**
+ * Handles the different cases in which compensation is present
+ * @param {string} comp Compensation
+ * @return {number} Compensation in Lacs
+ */
 function getCompensationHelper(comp) {
   comp = comp.trim();
-  if (comp[comp.length - 1] == 'L') {
+  if (comp[comp.length - 1] == 'L') {  // Compensation is in lacs (1.5L)
     return parseFloat(comp.substring(0, comp.length - 1));
   }
-  if (comp[comp.length - 1] == 'r') {
+  if (comp[comp.length - 1] == 'r') {  // Compensation is in crores (1.2 Cr)
     return parseFloat(comp.substring(0, comp.length - 2)) * 100;
   }
-  comp = comp.replace(',', '');
+  comp = comp.replace(',', '');  // Compensation is in Rs (50,000)
   return parseFloat(comp) / 100000;
 }
 
+/**
+ * Extracts minimum and maximum compensation
+ * @param {string} comp Compensation
+ * @return {Array} Compensation in Lacs
+ */
 function getCompensation(text) {
   var re1 = /^₹(.*)\–.*₹(.*)•/
   var re2 = /^₹(.*)\–.*₹(.*)/
@@ -69,7 +79,10 @@ function getCompensation(text) {
   return ret;
 }
 
-function getStartupData(data) {
+/**
+ * Helper function to extract data from startup data object
+ */
+function extractStartupData(data) {
   data = data.node;
   jobData = data.highlightedJobListings;
   var companyName = data.name;
@@ -86,15 +99,20 @@ function getStartupData(data) {
   }
 }
 
+/**
+ * Driver function to extract data one page after another
+ */
 function run(page = 1) {
   console.log('Running Page: ', page);
-  axios(getConfig(page))
+  axios(getRequestConfig(page))
       .then(function(response) {
         var data = response.data;
         var startups = data.data.talent.jobSearchResults.startups.edges;
-        for (var i = 0; i < startups.length; i++) getStartupData(startups[i]);
+        for (var i = 0; i < startups.length; i++)
+          extractStartupData(startups[i]);
 
         if (startups.length == 0) {
+          // No more data left, dump to file
           fs.writeFile(
               'output.json', JSON.stringify(aggregateData), 'utf8',
               function(err) {
@@ -103,11 +121,11 @@ function run(page = 1) {
                       'An error occured while writing JSON Object to File.');
                   return console.log(err);
                 }
-
                 console.log('JSON file has been saved.');
               });
           return;
         } else {
+          // Extract next page
           run(page + 1);
         }
       })
@@ -115,6 +133,5 @@ function run(page = 1) {
         console.log(error);
       });
 }
-
 
 run()
